@@ -1,0 +1,10 @@
+# ===================================================================
+# tpRigToolkit-libs-controlrig requirements file
+# ===================================================================
+Qt.py
+pytest
+pytest-cov
+coveralls
+sphinx
+sphinx_rtd_theme
+tpDcc-core

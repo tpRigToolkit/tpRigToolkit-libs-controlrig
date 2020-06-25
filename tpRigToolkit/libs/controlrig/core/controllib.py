@@ -218,8 +218,8 @@ class ControlLib(object):
         self.save_control_data(control_pool)
 
     @staticmethod
-    def create_control(shape_data, target_object=None, name='new_ctrl', size=1, offset=(0, 0, 0), ori=(1, 1, 1),
-                       axis_order='XYZ', mirror=None, shape_parent=False, parent=None, color=None):
+    def create_control(shape_data, target_object=None, name='new_ctrl', size=1.0, offset=(0, 0, 0), ori=(1, 1, 1),
+                       axis_order='XYZ', mirror=None, shape_parent=False, parent=None, color=None, **kwargs):
         """
         Creates a new control
         :param shape_data: str, shape name from the dictionary
@@ -375,8 +375,35 @@ class ControlLib(object):
                                            ori=ori, axis_order=axis_order, mirror=mirror,
                                            shape_parent=shape_parent, parent=parent, color=color)
 
+        LOGGER.warning(
+            'No control found with name: {}. Returning first control in library: {}'.format(
+                ctrl_name, controls[0].name))
+
         # If the given control is not valid we create the first one of the list of controls
         return self.create_control(controls[0].shapes)
+
+    def get_control_data_by_name(self, ctrl_name):
+        """
+        Returns data of the given control
+        :param ctrl_name: str
+        :return:
+        """
+
+        controls = self.get_controls() or list()
+        if not controls:
+            LOGGER.warning('No controls found!')
+            return
+
+        for control in controls:
+            if control.name == ctrl_name:
+                return control
+
+        LOGGER.warning(
+            'No control found with name: {}. Returning first control in library: {}'.format(
+                ctrl_name, controls[0].name))
+
+        # If the given control is not valid we create the first one of the list of controls
+        return controls[0]
 
     @staticmethod
     def validate_curve(crv):
@@ -465,7 +492,7 @@ class ControlLib(object):
         return shapes
 
     @classmethod
-    def set_shape(cls, crv, crv_shape_list):
+    def set_shape(cls, crv, crv_shape_list, size=None):
         """
         Creates a new shape on the given curve
         :param crv:
@@ -500,5 +527,8 @@ class ControlLib(object):
         if orig_size and new_size:
             scale_size = orig_size / new_size
             shape_utils.scale_shapes(crv, scale_size, relative=False)
+
+        if size:
+            shape_utils.scale_shapes(crv, size, relative=True)
 
         maya.cmds.select(crv)

@@ -8,7 +8,6 @@ Module that contains functions related with ControlLib
 from __future__ import print_function, division, absolute_import
 
 import os
-import logging
 from copy import copy
 
 from Qt.QtGui import *
@@ -16,15 +15,13 @@ from Qt.QtGui import *
 import tpDcc as tp
 from tpDcc.libs.python import jsonio, yamlio
 
+import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
 # TODO: We need to remove all dependencies from Maya
 if tp.is_maya():
     import tpDcc.dccs.maya as maya
     from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils
-
-
-LOGGER = logging.getLogger()
 
 
 class ControlLib(object):
@@ -91,7 +88,7 @@ class ControlLib(object):
                 pass
 
         if not self.has_valid_controls_file():
-            LOGGER.warning('Impossible to initialize controls data because controls file "{}" does not exists!'.format(
+            tpRigToolkit.logger.warning('Impossible to initialize controls data because controls file "{}" does not exists!'.format(
                 self._controls_file
             ))
             return None
@@ -110,7 +107,7 @@ class ControlLib(object):
 
         data_controls = data.get('controls')
         if not data_controls:
-            LOGGER.warning('No controsl found in current controls data!')
+            tpRigToolkit.logger.warning('No controsl found in current controls data!')
             return None
 
         for ctrl in data_controls:
@@ -159,7 +156,7 @@ class ControlLib(object):
 
         control_pool = self.load_control_data()
         if control_name in control_pool:
-            LOGGER.warning('Control "{}" already exists in Control File. Aborting adding control operation ...')
+            tpRigToolkit.logger.warning('Control "{}" already exists in Control File. Aborting adding control operation ...')
             return
 
         new_ctrl = controldata.ControlData(
@@ -167,7 +164,7 @@ class ControlLib(object):
             ctrl_data=curve_info
         )
         if not new_ctrl:
-            LOGGER.error(
+            tpRigToolkit.logger.error(
                 'Control Data for "{}" curve was not created properly! Aborting control add operation ...'.format(
                     control_name))
             return
@@ -186,12 +183,12 @@ class ControlLib(object):
 
         control_pool = self.load_control_data()
         if old_name not in control_pool:
-            LOGGER.warning(
+            tpRigToolkit.logger.warning(
                 'Control "{}" is not stored in Control File. Aborting renaming control operation ...'.format(old_name))
             return False
 
         if new_name in control_pool:
-            LOGGER.warning(
+            tpRigToolkit.logger.warning(
                 'New Control name "{}" is already stored in Control File. '
                 'Aborting renaming control operation ...'.format(new_name))
             return False
@@ -210,7 +207,7 @@ class ControlLib(object):
 
         control_pool = self.load_control_data()
         if control_name not in control_pool:
-            LOGGER.warning(
+            tpRigToolkit.logger.warning(
                 'Control "{}" is not stored in Control File. Aborting deleting control operation ...')
             return
 
@@ -366,7 +363,7 @@ class ControlLib(object):
 
         controls = self.get_controls() or list()
         if not controls:
-            LOGGER.warning('No controls found!')
+            tpRigToolkit.logger.warning('No controls found!')
             return
 
         for control in controls:
@@ -375,7 +372,7 @@ class ControlLib(object):
                                            ori=ori, axis_order=axis_order, mirror=mirror,
                                            shape_parent=shape_parent, parent=parent, color=color)
 
-        LOGGER.warning(
+        tpRigToolkit.logger.warning(
             'No control found with name: {}. Returning first control in library: {}'.format(
                 ctrl_name, controls[0].name))
 
@@ -391,14 +388,14 @@ class ControlLib(object):
 
         controls = self.get_controls() or list()
         if not controls:
-            LOGGER.warning('No controls found!')
+            tpRigToolkit.logger.warning('No controls found!')
             return
 
         for control in controls:
             if control.name == ctrl_name:
                 return control
 
-        LOGGER.warning(
+        tpRigToolkit.logger.warning(
             'No control found with name: {}. Returning first control in library: {}'.format(
                 ctrl_name, controls[0].name))
 
@@ -429,7 +426,7 @@ class ControlLib(object):
         elif maya.cmds.nodeType(crv) == 'nurbsCurve':
             crv_shapes = maya.cmds.listRelatives(maya.cmds.listRelatives(crv, p=True)[0], c=True, s=True)
         else:
-            LOGGER.error('The object "{}" being validated is not a curve!'.format(crv))
+            tpRigToolkit.logger.error('The object "{}" being validated is not a curve!'.format(crv))
 
         return crv_shapes
 

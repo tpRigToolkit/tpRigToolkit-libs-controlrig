@@ -59,6 +59,7 @@ class ControlLib(object):
     @controls_file.setter
     def controls_file(self, controls_file_path):
         self._controls_file = controls_file_path
+        self.load_control_data()
 
     def has_valid_controls_file(self):
         """
@@ -354,7 +355,7 @@ class ControlLib(object):
 
     def create_control_by_name(
             self, ctrl_name, name='new_ctrl', size=1, offset=(0, 0, 0), ori=(1, 1, 1), axis_order='XYZ',
-            mirror=None, shape_parent=False, parent=None, color=None):
+            mirror=None, shape_parent=False, target_object=None, parent=None, color=None):
         """
         Creates a new control given its name in the library
         :param ctrl_name: str, name of the control we want to create from the library
@@ -368,9 +369,9 @@ class ControlLib(object):
 
         for control in controls:
             if control.name == ctrl_name:
-                return self.create_control(control.shapes, name=name, size=size, offset=offset,
-                                           ori=ori, axis_order=axis_order, mirror=mirror,
-                                           shape_parent=shape_parent, parent=parent, color=color)
+                return self.create_control(
+                    control.shapes, name=name, size=size, offset=offset, ori=ori, axis_order=axis_order,
+                    mirror=mirror, shape_parent=shape_parent, parent=parent, color=color, target_object=target_object)
 
         tpRigToolkit.logger.warning(
             'No control found with name: {}. Returning first control in library: {}'.format(
@@ -489,7 +490,7 @@ class ControlLib(object):
         return shapes
 
     @classmethod
-    def set_shape(cls, crv, crv_shape_list, size=None):
+    def set_shape(cls, crv, crv_shape_list, size=None, select_new_shape=False):
         """
         Creates a new shape on the given curve
         :param crv:
@@ -515,7 +516,7 @@ class ControlLib(object):
             new_shape = maya.cmds.listRelatives(c, s=True)[0]
             maya.cmds.parent(new_shape, crv, r=True, s=True)
             maya.cmds.delete(c)
-            new_shape = maya.cmds.rename(new_shape, crv + 'Shape' + str(i + 1).zfill(2))
+            new_shape = maya.cmds.rename(new_shape, tp.Dcc.node_short_name(crv) + 'Shape' + str(i + 1).zfill(2))
             maya.cmds.setAttr(new_shape + '.overrideEnabled', True)
 
         bbox = xform_utils.BoundingBox(crv).get_shapes_bounding_box()
@@ -528,4 +529,5 @@ class ControlLib(object):
         if size:
             shape_utils.scale_shapes(crv, size, relative=True)
 
-        maya.cmds.select(crv)
+        if select_new_shape:
+            maya.cmds.select(crv)

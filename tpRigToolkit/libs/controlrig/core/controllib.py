@@ -19,6 +19,8 @@ import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
 # TODO: We need to remove all dependencies from Maya
+# TODO: When storing controls that are a hierarchy of shapes, we MUST respect that hierarchy
+
 if tp.is_maya():
     import tpDcc.dccs.maya as maya
     from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils
@@ -311,10 +313,7 @@ class ControlLib(object):
         # The apply last transforms
         for i, ctrls in enumerate(controls):
             ctrl = ctrls[0]
-            if len(shape_data) > 1:
-                controls_to_color = ctrls[1:]
-            else:
-                controls_to_color = ctrls
+            controls_to_color = ctrls
 
             for obj in controls_to_color:
                 # Update shape color
@@ -340,16 +339,20 @@ class ControlLib(object):
                         else:
                             maya.cmds.setAttr(shp + '.overrideColor', 22)
 
-                    # Update shape parent
-                    # maya.cmds.parent(shp, ctrl, s=True, add=True, relative=True)
-
+            # Combine shapes
             if len(ctrls) > 1:
-                maya.cmds.delete(ctrls[1:])
+                for obj in ctrls[1:]:
+                    shapes = maya.cmds.listRelatives(obj, s=True, ni=True, f=True)
+                    maya.cmds.parent(shapes, ctrl, s=True, add=True)
+                    maya.cmds.delete(obj)
 
             if parent:
                 tp.Dcc.set_parent(ctrl, parent)
             elif shape_parent and len(target_object) != 0:
                 pass
+
+            if len(ctrls) > 1:
+                return [ctrl]
 
         return controls
 

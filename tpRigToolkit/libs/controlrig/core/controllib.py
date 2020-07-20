@@ -13,7 +13,7 @@ from copy import copy
 from Qt.QtGui import *
 
 import tpDcc as tp
-from tpDcc.libs.python import jsonio, yamlio
+from tpDcc.libs.python import decorators, jsonio, yamlio
 
 import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
@@ -23,7 +23,11 @@ from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
 if tp.is_maya():
     import tpDcc.dccs.maya as maya
-    from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils
+    from tpDcc.dccs.maya.core import decorators as maya_decorators, transform as xform_utils, shape as shape_utils
+
+    undo_decorator = maya_decorators.undo_chunk
+else:
+    undo_decorator = decorators.empty_decorator
 
 
 class ControlLib(object):
@@ -534,3 +538,29 @@ class ControlLib(object):
 
         if select_new_shape:
             maya.cmds.select(crv)
+
+
+@undo_decorator
+def create_text_control(text, font='Times New Roman'):
+    created_text = maya.cmds.textCurves(f=font, t=text)
+    children_list = maya.cmds.listRelatives(created_text[0], ad=True)
+    texts_list = []
+    for i in children_list:
+        if 'curve' in i and 'Shape' not in i:
+            texts_list.append(i)
+    for i in range(len(texts_list)):
+        maya.cmds.parent(texts_list[i], w=True)
+        maya.cmds.makeIdentity(texts_list[i], apply=True, t=1, r=1, s=1, n=0)
+        if i == 0:
+            parent_guide = texts_list[0]
+        else:
+            shape = maya.cmds.listRelatives(texts_list[i], s=True)
+            maya.cmds.move(0, 0, 0, (texts_list[i] + '.scalePivot'), (texts_list[i] + '.rotatePivot'))
+            maya.cmds.parent(shape, parent_guide, add=True, s=True)
+            maya.cmds.delete(texts_list[i])
+    maya.cmds.delete(created_text[0])
+    maya.cmds.xform(texts_list[0], cp=True)
+    world_position = maya.cmds.xform(texts_list[0], q=True, piv=True, ws=True)
+    maya.cmds.xform(texts_list[0], t=(-world_position[0], -world_position[1], -world_position[2]))
+    maya.cmds.makeIdentity(texts_list[0], apply=True, t=1, r=1, s=1, n=0)
+    maya.cmds.select(texts_list[0])

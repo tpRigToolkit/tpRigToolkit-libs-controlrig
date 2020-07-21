@@ -94,9 +94,7 @@ class ControlV(list):
 
     def __radd__(self, other):
         return self + other
-    # endregion
 
-    # Static Functions
     @staticmethod
     def mirror_vector():
         return {
@@ -105,9 +103,7 @@ class ControlV(list):
             'YZ': ControlV([-1, 1, 1]),
             'ZX': ControlV([1, -1, 1])
         }
-    # endregion
 
-    # region Public Functions
     def reorder(self, order):
         """
         With a given order sequence CVs will be reordered (for axis order purposes)
@@ -115,7 +111,6 @@ class ControlV(list):
         """
 
         return ControlV([self[i] for i in order])
-    # endregion
 
 
 class ControlShape(object):
@@ -138,7 +133,6 @@ class ControlShape(object):
         self._transform_axis = range(3)
         self._transform_mirror = ControlV.mirror_vector()[None]
 
-    # region Properties
     def get_cvs(self):
         return self._cvs
 
@@ -168,9 +162,7 @@ class ControlShape(object):
     degree = property(get_degree)
     periodic = property(get_periodic)
     smooth = property(get_smooth, set_smooth)
-    # endregion
 
-    # region Override Functions
     def __call__(self):
         """
         Returns a formated version of the shape for saving purpose
@@ -184,9 +176,7 @@ class ControlShape(object):
         }
 
         return shape_dict
-    # endregion
 
-    # region Public Functions
     def apply_transform(self):
         """
         Apply the transforms to the current shape
@@ -217,7 +207,6 @@ class ControlShape(object):
         self._transform_mirror = ControlV.mirror_vector()[mirror]
 
         self.apply_transform()
-    # endregion
 
 
 class ControlData(object):

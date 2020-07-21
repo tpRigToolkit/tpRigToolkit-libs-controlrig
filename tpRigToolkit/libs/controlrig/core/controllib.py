@@ -18,7 +18,6 @@ from tpDcc.libs.python import decorators, jsonio, yamlio
 import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
-# TODO: We need to remove all dependencies from Maya
 # TODO: When storing controls that are a hierarchy of shapes, we MUST respect that hierarchy
 
 if tp.is_maya():
@@ -240,9 +239,6 @@ class ControlLib(object):
         :return: parent: str, parent of the curve
         """
 
-        if not tp.is_maya():
-            return
-
         target_object = [target_object] if not isinstance(target_object, list) else target_object
         controls = list()
         orient = controldata.ControlV(ori)
@@ -256,7 +252,8 @@ class ControlLib(object):
             :return:
             """
 
-            points, degree, periodic = copy(shape_data.__cvs__), shape_data.degree, shape_data.periodic
+            cvs = [controldata.ControlV(pt) for pt in copy(shape_data['cvs'])]
+            points, degree, periodic = copy(cvs), shape_data['degree'], shape_data['periodic']
             order = [controldata.axis_eq[x] for x in axis_order]
 
             for i, point in enumerate(points):
@@ -279,8 +276,9 @@ class ControlLib(object):
                 points.extend(points[0:degree])
 
             # Create the curve
-            return maya.cmds.curve(
-                n=name, d=degree, p=points, k=[i for i in range(-degree + 1, len(points))], per=periodic)
+            knots = [i for i in range(-degree + 1, len(points))]
+
+            return tp.Dcc.create_curve(name=name, degree=degree, points=points, knots=knots, periodic=periodic)
 
         def create_name(obj_name):
             compo_name = [name if len(name) else obj_name]
@@ -293,19 +291,23 @@ class ControlLib(object):
                 ctrl_name = create_name(obj)
                 for shp in shape_data:
                     try:
-                        offset_perc = [
-                            maya.cmds.getAttr(
-                                '%s.t%s' % (maya.cmds.listRelatives(obj, c=True, type='joint')[0], x))[0] * offset[
-                                i] for i, x in enumerate('xyz')]
+                        children_joint = None
+                        children_joints = tp.Dcc.list_children(obj, children_type='joint')
+                        if children_joints:
+                            children_joint = children_joints[0]
+                        if children_joint:
+                            offset_perc = [tp.Dcc.get_attribute_value(obj, x) * offset[i] for i, x in enumerate('xyz')]
+                        else:
+                            offset_perc = offset
                     except (ValueError, TypeError):
                         offset_perc = offset
                     finally:
                         ctrl = create(shape_data=shp, name=ctrl_name, offset=controldata.ControlV(offset_perc))
 
                     # Realign controller and set rotation order
-                    maya.cmds.setAttr('{}.t'.format(ctrl), *controlutils.getpos(obj), type='double3')
+                    tp.Dcc.set_attribute_value(ctrl, 't', *controlutils.getpos(obj))
                     controlutils.snap(obj, ctrl, t=False)
-                    maya.cmds.setAttr(ctrl + '.ro', ro)
+                    tp.Dcc.set_attribute_value(ctrl, 'ro', ro)
 
                     ctrls.append(ctrl)
                 controls.append(ctrls)

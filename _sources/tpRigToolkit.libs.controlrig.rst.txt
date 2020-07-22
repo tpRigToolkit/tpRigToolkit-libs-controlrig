@@ -1,0 +1,18 @@
+tpRigToolkit.libs.controlrig package
+====================================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   tpRigToolkit.libs.controlrig.core
+
+Module contents
+---------------
+
+.. automodule:: tpRigToolkit.libs.controlrig
+   :members:
+   :undoc-members:
+   :show-inheritance:

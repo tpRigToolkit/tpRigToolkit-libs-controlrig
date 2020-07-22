@@ -1,1 +1,4 @@
+include versioneer.py
 include tpRigToolkit/libs/controlrig/__logging__.ini
+include tpRigToolkit/libs/controlrig/_version.py
+include tpRigToolkit/libs/controlrig/data.json

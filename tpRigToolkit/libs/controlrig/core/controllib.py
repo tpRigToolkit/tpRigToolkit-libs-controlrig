@@ -94,9 +94,9 @@ class ControlLib(object):
                 pass
 
         if not self.has_valid_controls_file():
-            tpRigToolkit.logger.warning('Impossible to initialize controls data because controls file "{}" does not exists!'.format(
-                self._controls_file
-            ))
+            tpRigToolkit.logger.warning(
+                'Impossible to initialize controls data because controls file "{}" does not exists!'.format(
+                    self._controls_file))
             return None
 
         if self._parser_format == 'yaml':
@@ -162,7 +162,8 @@ class ControlLib(object):
 
         control_pool = self.load_control_data()
         if control_name in control_pool:
-            tpRigToolkit.logger.warning('Control "{}" already exists in Control File. Aborting adding control operation ...')
+            tpRigToolkit.logger.warning(
+                'Control "{}" already exists in Control File. Aborting adding control operation ...')
             return
 
         new_ctrl = controldata.ControlData(

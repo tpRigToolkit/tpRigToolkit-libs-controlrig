@@ -177,6 +177,9 @@ class ControlShape(object):
 
         return shape_dict
 
+    def __getitem__(self, item):
+        return self()[item]
+
     def apply_transform(self):
         """
         Apply the transforms to the current shape

@@ -13,7 +13,7 @@ from copy import copy
 from Qt.QtGui import *
 
 import tpDcc as tp
-from tpDcc.libs.python import decorators, jsonio, yamlio
+from tpDcc.libs.python import jsonio, yamlio
 
 import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
@@ -22,11 +22,7 @@ from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
 if tp.is_maya():
     import tpDcc.dccs.maya as maya
-    from tpDcc.dccs.maya.core import decorators as maya_decorators, transform as xform_utils, shape as shape_utils
-
-    undo_decorator = maya_decorators.undo_chunk
-else:
-    undo_decorator = decorators.empty_decorator
+    from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils
 
 
 class ControlLib(object):
@@ -306,7 +302,7 @@ class ControlLib(object):
                         ctrl = create(shape_data=shp, name=ctrl_name, offset=controldata.ControlV(offset_perc))
 
                     # Realign controller and set rotation order
-                    tp.Dcc.set_attribute_value(ctrl, 't', *controlutils.getpos(obj))
+                    tp.Dcc.set_attribute_value(ctrl, 't', controlutils.getpos(obj))
                     controlutils.snap(obj, ctrl, t=False)
                     tp.Dcc.set_attribute_value(ctrl, 'ro', ro)
 
@@ -328,7 +324,7 @@ class ControlLib(object):
                 for shp in shapes:
                     if maya.cmds.attributeQuery('overrideEnabled', node=shp, exists=True):
                         maya.cmds.setAttr(shp + '.overrideEnabled', True)
-                    if color:
+                    if color is not None:
                         if maya.cmds.attributeQuery('overrideRGBColors', node=shp, exists=True) and type(color) != int:
                             maya.cmds.setAttr(shp + '.overrideRGBColors', True)
                             if type(color) in [list, tuple]:
@@ -390,6 +386,24 @@ class ControlLib(object):
         # If the given control is not valid we create the first one of the list of controls
         return self.create_control(controls[0].shapes)
 
+    def control_exists(self, ctrl_name):
+        """
+        Returns whether or not given control exists
+        :param ctrl_name: str
+        :return: bool
+        """
+
+        controls = list(self.get_controls()) or list()
+        if not controls:
+            tpRigToolkit.logger.warning('No controls found!')
+            return
+
+        for control in controls:
+            if control.name == ctrl_name:
+                return True
+
+        return False
+
     def get_control_data_by_name(self, ctrl_name):
         """
         Returns data of the given control
@@ -397,7 +411,7 @@ class ControlLib(object):
         :return:
         """
 
-        controls = self.get_controls() or list()
+        controls = list(self.get_controls()) or list()
         if not controls:
             tpRigToolkit.logger.warning('No controls found!')
             return
@@ -543,7 +557,7 @@ class ControlLib(object):
             maya.cmds.select(crv)
 
 
-@undo_decorator
+@tp.Dcc.get_undo_decorator()
 def create_text_control(text, font='Times New Roman'):
     created_text = maya.cmds.textCurves(f=font, t=text)
     children_list = maya.cmds.listRelatives(created_text[0], ad=True)

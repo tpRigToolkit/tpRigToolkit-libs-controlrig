@@ -13,7 +13,7 @@ from copy import copy
 from Qt.QtGui import *
 
 import tpDcc as tp
-from tpDcc.libs.python import jsonio, yamlio
+from tpDcc.libs.python import jsonio, yamlio, python
 
 import tpRigToolkit
 from tpRigToolkit.libs.controlrig.core import controldata, controlutils
@@ -22,7 +22,15 @@ from tpRigToolkit.libs.controlrig.core import controldata, controlutils
 
 if tp.is_maya():
     import tpDcc.dccs.maya as maya
-    from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils
+    from tpDcc.dccs.maya.core import transform as xform_utils, shape as shape_utils, name as name_utils
+
+CONTROLS_NAMES_TO_SKIP = ['front', 'persp', 'side', 'top']
+CONTROLS_PREFIXES = ['ctrl_', 'CON_', 'Ctrl_', 'control_']
+CONTROLS_PREFIXES_TO_SKIP = ['xform_', 'driver_', 'root_', 'auto_', 'follow_', 'offset_']
+CONTROLS_SUFFIXES = ['_ctrl', '_CON', '_Ctrl', '_control']
+CONTROLS_SUFFIXES_TO_SKIP = ['_xform', '_driver', '_root', '_auto', '_follow', '_offset']
+CONTROLS_ATTRIBUTES = ['control']
+CONTROLS_ATTRIBUTES_TO_SKIP = ['POSE']
 
 
 class ControlLib(object):
@@ -581,3 +589,186 @@ def create_text_control(text, font='Times New Roman'):
     maya.cmds.xform(texts_list[0], t=(-world_position[0], -world_position[1], -world_position[2]))
     maya.cmds.makeIdentity(texts_list[0], apply=True, t=1, r=1, s=1, n=0)
     maya.cmds.select(texts_list[0])
+
+
+def is_control(transform_node, only_tagged=False, **kwargs):
+    """
+    Returns whether or not given transform is a rig control
+    :param transform: str
+    :return: bool
+    """
+
+    maybe_control = False
+
+    names_to_skip = python.force_list(kwargs.get('names_to_skip', list()))
+    prefixes_to_check = python.force_list(kwargs.get('prefixes_to_check', list()))
+    prefixes_to_skip = python.force_list(kwargs.get('prefixes_to_skip', list()))
+    suffixes_to_check = python.force_list(kwargs.get('suffixes_to_check', list()))
+    suffixes_to_skip = python.force_list(kwargs.get('suffixes_to_skip', list()))
+    attributes_to_check = python.force_list(kwargs.get('attributes_to_check', list()))
+    attributes_to_skip = python.force_list(kwargs.get('attributes_to_skip', list()))
+    names_to_skip.extend(CONTROLS_NAMES_TO_SKIP)
+    prefixes_to_check.extend(CONTROLS_PREFIXES)
+    prefixes_to_skip.extend(CONTROLS_PREFIXES_TO_SKIP)
+    suffixes_to_check.extend(CONTROLS_SUFFIXES)
+    suffixes_to_skip.extend(CONTROLS_SUFFIXES_TO_SKIP)
+    attributes_to_check.extend(CONTROLS_ATTRIBUTES)
+    attributes_to_skip.extend(CONTROLS_ATTRIBUTES_TO_SKIP)
+    names_to_skip = tuple(set(names_to_skip))
+    prefixes_to_check = tuple(set(prefixes_to_check))
+    prefixes_to_skip = tuple(set(prefixes_to_skip))
+    suffixes_to_check = tuple(set(suffixes_to_check))
+    suffixes_to_skip = tuple(set(suffixes_to_skip))
+    attributes_to_check = tuple(set(attributes_to_check))
+    attributes_to_skip = tuple(set(attributes_to_skip))
+
+    # TODO: We could use nomenclature to check control validity
+
+    transform = name_utils.remove_namespace_from_string(transform_node)
+
+    if only_tagged:
+        if tp.Dcc.attribute_exists(transform, 'tag'):
+            value = tp.Dcc.get_attribute_value(transform, 'tag')
+            if value:
+                return True
+        return False
+    else:
+        # Check names
+        if transform in names_to_skip:
+            return False
+
+        # Check prefix and suffix
+        if transform.startswith(prefixes_to_skip) or transform.endswith(suffixes_to_skip):
+            return False
+        if transform.startswith(prefixes_to_check) or transform.endswith(suffixes_to_check):
+            maybe_control = True
+
+        # Check attributes
+        for attr_to_skip in attributes_to_skip:
+            if tp.Dcc.attribute_exists(transform, attr_to_skip):
+                return False
+        for attr_to_check in attributes_to_check:
+            if tp.Dcc.attribute_exists(transform, attr_to_check):
+                return True
+        if tp.Dcc.attribute_exists(transform, 'tag'):
+            value = tp.Dcc.get_attribute_value(transform, 'tag')
+            if value:
+                maybe_control = True
+        if tp.Dcc.attribute_exists(transform, 'curveType'):
+            if maybe_control:
+                if not shape_utils.has_shape_of_type(transform, 'nurbsCurve'):
+                    return False
+                return True
+
+        if maybe_control:
+            if shape_utils.has_shape_of_type(
+                    transform, 'nurbsCurve') or shape_utils.has_shape_of_type(transform, 'nurbsSurface'):
+                return True
+
+    return False
+
+
+def get_controls(namespace='', **kwargs):
+    """
+    Returns all controls in current scene
+    Checks for the following info:
+        - Check if the controls start with a control prefx or ends with a control suffix
+        - Check if the controls have a specific control attribute
+        - Check if a transform has an attribute called tag (with value) and the transform has a nurbsCurve at least
+    :param namespace: str, only controls with the given namespace will be search.
+    :return: list(str), list of control names
+    """
+
+    name = '{}:*'.format(namespace) if namespace else '*'
+
+    transforms = tp.Dcc.list_nodes(name, node_type='transform', full_path=False)
+    joints = tp.Dcc.list_nodes(name, node_type='joint', full_path=False)
+    if joints:
+        transforms += joints
+
+    found = list()
+    found_with_value = list()
+
+    for transform_node in transforms:
+        if is_control(transform_node, only_tagged=True, **kwargs):
+            found_with_value.append(transform_node)
+        elif is_control(transform_node, only_tagged=False, **kwargs):
+            found.append(transform_node)
+
+    return found_with_value if found_with_value else found
+
+
+@tp.Dcc.get_undo_decorator()
+def select_controls(namespace='', **kwargs):
+    """
+    Select all controls in current scene
+    :param namespace: str
+    """
+
+    all_controls = get_controls(namespace=namespace, **kwargs)
+    if not all_controls:
+        return
+
+    tp.Dcc.select_object(all_controls)
+
+
+@tp.Dcc.get_undo_decorator()
+def key_controls(namespace='', **kwargs):
+    """
+    Sets a keyframe in all controls in current scene
+    :param namespace: str
+    :param kwargs:
+    """
+
+    all_controls = get_controls(namespace=namespace, **kwargs)
+    if not all_controls:
+        return
+
+    maya.cmds.setKeyframe(all_controls, shape=0, controlPoints=0, hierarchy='none', breakdown=0)
+
+
+@tp.Dcc.get_undo_decorator()
+def mirror_control(control):
+    """
+    Find the right side control of a left side control and mirrors the control following next rules:
+        - Mirror only will be applied if corresponding right side name exists
+        - Replace left prefix and suffixes checking for validity
+    :param control: str
+    :return: str, mirrored control
+    """
+
+    if not control:
+        return
+
+
+@tp.Dcc.get_undo_decorator()
+def mirror_controls(**kwargs):
+    """
+    Mirrors the CV positions of all controls in the current scene
+    """
+
+    mirrored_controls = list()
+
+    all_controls = get_controls(**kwargs)
+    if not all_controls:
+        return mirrored_controls
+
+    for control in all_controls:
+        if control in mirror_controls:
+            continue
+        mirrored_control = mirror_control(control)
+        mirrored_controls.append(mirror_control)
+
+    return mirrored_controls
+
+
+@tp.Dcc.get_undo_decorator()
+def scale_controls(value, namespace='', **kwargs):
+    all_controls = get_controls(namespace=namespace, **kwargs) or list()
+    for control in all_controls:
+        shapes = shape_utils.get_shapes(control)
+        components = shape_utils.get_components_from_shapes(shapes)
+        if not components:
+            return
+        pivot = maya.cmds.xform(control, query=True, rp=True, ws=True)
+        maya.cmds.scale(value, value, value, components, p=pivot, r=True)

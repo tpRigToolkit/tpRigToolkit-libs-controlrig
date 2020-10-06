@@ -227,7 +227,7 @@ class ControlLib(object):
 
     @staticmethod
     def create_control(shape_data, target_object=None, name='new_ctrl', size=1.0, offset=(0, 0, 0), ori=(1, 1, 1),
-                       axis_order='XYZ', mirror=None, shape_parent=False, parent=None, color=None, **kwargs):
+                       axis_order='XYZ', mirror=None, shape_parent=False, parent=None, color=None, buffer_groups=0):
         """
         Creates a new control
         :param shape_data: str, shape name from the dictionary
@@ -241,6 +241,7 @@ class ControlLib(object):
         :param shape_parent, bool, True will parent the shape to the target object
         :param parent
         :param color
+        :param buffer_groups
         :return: parent: str, parent of the curve
         """
 
@@ -322,11 +323,13 @@ class ControlLib(object):
                  shape_data])
 
         # The apply last transforms
+        replace_controls = list()
         for i, ctrls in enumerate(controls):
             ctrl = ctrls[0]
             controls_to_color = ctrls
 
             for obj in controls_to_color:
+
                 # Update shape color
                 shapes = maya.cmds.listRelatives(obj, s=True, ni=True, f=True)
                 for shp in shapes:
@@ -355,15 +358,22 @@ class ControlLib(object):
                 for obj in ctrls[1:]:
                     shapes = maya.cmds.listRelatives(obj, s=True, ni=True, f=True)
                     maya.cmds.parent(shapes, ctrl, s=True, add=True)
-                    maya.cmds.delete(obj)
+                    # maya.cmds.delete(obj)
+                maya.cmds.delete(ctrls[1:])
 
             if parent:
                 tp.Dcc.set_parent(ctrl, parent)
             elif shape_parent and len(target_object) != 0:
-                pass
+                replaced_shapes = ControlLib.shape_to_transforms(ctrl, target_object[i])
+                ctrls[0] = replaced_shapes[0]
+            elif buffer_groups:
+                ControlLib.create_buffer_groups(ctrl, buffer_groups)
 
             if len(ctrls) > 1:
-                return [ctrl]
+                if replace_controls:
+                    return [replace_controls[0][1]]
+                else:
+                    return [ctrl]
 
         return controls
 
@@ -522,11 +532,14 @@ class ControlLib(object):
         return shapes
 
     @classmethod
-    def set_shape(cls, crv, crv_shape_list, size=None, select_new_shape=False):
+    def set_shape(cls, crv, crv_shape_list, size=None, select_new_shape=False, keep_color=False):
         """
         Creates a new shape on the given curve
         :param crv:
         :param crv_shape_list:
+        :param size:
+        :param select_new_shape: bool
+        :param keep_color: bool
         """
 
         if not tp.is_maya():
@@ -534,22 +547,26 @@ class ControlLib(object):
 
         crv_shapes = cls.validate_curve(crv)
 
-        # old_color = maya.cmds.getAttr('{}.overrideColor'.format(crv_shapes[0]))
-
         orig_size = None
+        orig_color = None
         if crv_shapes:
             bbox = xform_utils.BoundingBox(crv).get_shapes_bounding_box()
             orig_size = bbox.get_size()
+
+            # If there are multiple shapes, we only take into account the color of the first shape
+            orig_color = tp.Dcc.node_color(crv_shapes[0])
 
         if crv_shapes:
             maya.cmds.delete(crv_shapes)
 
         for i, c in enumerate(crv_shape_list):
-            new_shape = maya.cmds.listRelatives(c, s=True)[0]
-            maya.cmds.parent(new_shape, crv, r=True, s=True)
-            maya.cmds.delete(c)
+            new_shape = maya.cmds.listRelatives(c, s=True, f=True)[0]
             new_shape = maya.cmds.rename(new_shape, tp.Dcc.node_short_name(crv) + 'Shape' + str(i + 1).zfill(2))
             maya.cmds.setAttr(new_shape + '.overrideEnabled', True)
+            if orig_color is not None and keep_color:
+                tp.Dcc.set_node_color(new_shape, orig_color)
+            maya.cmds.parent(new_shape, crv, r=True, s=True)
+            maya.cmds.delete(c)
 
         bbox = xform_utils.BoundingBox(crv).get_shapes_bounding_box()
         new_size = bbox.get_size()
@@ -564,8 +581,71 @@ class ControlLib(object):
         if select_new_shape:
             maya.cmds.select(crv)
 
+        return crv
 
-@tp.Dcc.get_undo_decorator()
+    @staticmethod
+    def shape_to_transforms(shapes=None, transforms=None):
+        """
+        Parent given shapes directly intro the given transforms
+        :param shapes: list(str)
+        :param transforms: list(str)
+        """
+
+        replaced_shapes = list()
+
+        shapes = python.force_list(shapes)
+        transforms = python.force_list(transforms)
+        if len(shapes) != len(transforms):
+            return False
+
+        for shape, transform in zip(shapes, transforms):
+            shapes = maya.cmds.listRelatives(shape, children=True, shapes=True, ni=True, fullPath=True)
+            combined_shape = maya.cmds.parent(shapes, transform, shape=True, add=True)[0]
+            combined_transform = maya.cmds.listRelatives(combined_shape, parent=True)[0]
+            if len(shapes) == 1:
+                maya.cmds.rename(shapes, '{}Shape'.format(shape))
+            else:
+                for i, shp in enumerate(shapes):
+                    maya.cmds.rename(shp, '%sShape%02d' % (transform, i))
+            # delete old transform
+            maya.cmds.delete(shape)
+            replaced_shapes.append(combined_transform)
+
+        return replaced_shapes
+
+    @staticmethod
+    def create_buffer_groups(target=None, depth=1):
+        """
+        Creates buffer groups for the given target
+        :param target: str
+        :param depth: int
+        :return: list(str)
+        """
+
+        result = list()
+
+        target = python.force_list(target)
+        for tgt in target:
+            rotate_order = tp.Dcc.get_attribute_value(tgt, 'rotateOrder')
+            for i in range(depth):
+                obj_parent = maya.cmds.listRelatives(tgt, parent=True, fullPath=True)
+                empty_group_name = 'buffer' if i == 0 else 'buffer{}'.format(i)
+                empty_group = maya.cmds.group(empty=True, n=empty_group_name, world=True)
+                tp.Dcc.set_attribute_value(empty_group, 'rotateOrder', rotate_order)
+                if obj_parent:
+                    maya.cmds.parent(empty_group, obj_parent)
+                obj_transform = [tp.Dcc.get_attribute_value(tgt, xform) for xform in 'trs']
+                maya.cmds.parent(tgt, empty_group)
+                for j, xform in enumerate('tsr'):
+                    maya.cmds.setAttr('{}.{}'.format(empty_group, xform), *obj_transform[j], type='double3')
+                    reset_xform = (0, 0, 0) if i != 1 else (1, 1, 1)
+                    maya.cmds.setAttr('{}.{}'.format(tgt, xform), *reset_xform, type='double3')
+                result.append(empty_group)
+
+        return result
+
+
+@tp.Dcc.undo_decorator()
 def create_text_control(text, font='Times New Roman'):
     created_text = maya.cmds.textCurves(f=font, t=text)
     children_list = maya.cmds.listRelatives(created_text[0], ad=True)
@@ -698,7 +778,7 @@ def get_controls(namespace='', **kwargs):
     return found_with_value if found_with_value else found
 
 
-@tp.Dcc.get_undo_decorator()
+@tp.Dcc.undo_decorator()
 def select_controls(namespace='', **kwargs):
     """
     Select all controls in current scene
@@ -709,10 +789,10 @@ def select_controls(namespace='', **kwargs):
     if not all_controls:
         return
 
-    tp.Dcc.select_object(all_controls)
+    tp.Dcc.select_node(all_controls)
 
 
-@tp.Dcc.get_undo_decorator()
+@tp.Dcc.undo_decorator()
 def key_controls(namespace='', **kwargs):
     """
     Sets a keyframe in all controls in current scene
@@ -727,7 +807,7 @@ def key_controls(namespace='', **kwargs):
     maya.cmds.setKeyframe(all_controls, shape=0, controlPoints=0, hierarchy='none', breakdown=0)
 
 
-@tp.Dcc.get_undo_decorator()
+@tp.Dcc.undo_decorator()
 def mirror_control(control):
     """
     Find the right side control of a left side control and mirrors the control following next rules:
@@ -741,7 +821,7 @@ def mirror_control(control):
         return
 
 
-@tp.Dcc.get_undo_decorator()
+@tp.Dcc.undo_decorator()
 def mirror_controls(**kwargs):
     """
     Mirrors the CV positions of all controls in the current scene
@@ -762,7 +842,7 @@ def mirror_controls(**kwargs):
     return mirrored_controls
 
 
-@tp.Dcc.get_undo_decorator()
+@tp.Dcc.undo_decorator()
 def scale_controls(value, namespace='', **kwargs):
     all_controls = get_controls(namespace=namespace, **kwargs) or list()
     for control in all_controls:

@@ -9,6 +9,7 @@ from __future__ import print_function, division, absolute_import, unicode_litera
 from copy import copy
 
 axis_eq = {'X': 0, 'Y': 1, 'Z': 2}
+rot_orders = ['XYZ', 'YXZ', 'ZYX']
 
 
 class ControlPool(set):
@@ -99,6 +100,7 @@ class ControlV(list):
     def mirror_vector():
         return {
             None: ControlV([1, 1, 1]),
+            'None': ControlV([1, 1, 1]),
             'XY': ControlV([1, 1, -1]),
             'YZ': ControlV([-1, 1, 1]),
             'ZX': ControlV([1, -1, 1])

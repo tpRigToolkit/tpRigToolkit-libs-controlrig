@@ -1,0 +1,7 @@
+tpRigToolkit.libs.controlrig.dccs.maya.controllib module
+========================================================
+
+.. automodule:: tpRigToolkit.libs.controlrig.dccs.maya.controllib
+   :members:
+   :undoc-members:
+   :show-inheritance:

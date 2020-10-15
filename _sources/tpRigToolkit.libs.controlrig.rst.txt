@@ -8,6 +8,7 @@ Subpackages
    :maxdepth: 4
 
    tpRigToolkit.libs.controlrig.core
+   tpRigToolkit.libs.controlrig.dccs
 
 Module contents
 ---------------

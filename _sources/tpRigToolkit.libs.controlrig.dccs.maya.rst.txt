@@ -1,0 +1,20 @@
+tpRigToolkit.libs.controlrig.dccs.maya package
+==============================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   tpRigToolkit.libs.controlrig.dccs.maya.commands
+   tpRigToolkit.libs.controlrig.dccs.maya.controllib
+   tpRigToolkit.libs.controlrig.dccs.maya.controlutils
+
+Module contents
+---------------
+
+.. automodule:: tpRigToolkit.libs.controlrig.dccs.maya
+   :members:
+   :undoc-members:
+   :show-inheritance:

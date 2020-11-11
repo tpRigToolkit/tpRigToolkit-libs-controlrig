@@ -7,11 +7,12 @@ Module that contains tpRigToolkit-libs-controllib function implementations for M
 
 from __future__ import print_function, division, absolute_import
 
-import tpDcc as tp
+import maya.cmds
+
+from tpDcc import dcc
 from tpDcc.core import command
 from tpDcc.libs.python import python
-
-import tpDcc.dccs.maya as maya
+ 
 from tpDcc.dccs.maya.api import node as api_node
 from tpDcc.dccs.maya.core import filtertypes, curve, name as name_utils, shape as shape_utils, node as node_utils
 from tpDcc.dccs.maya.core import transform as xform_utils, color as color_utils
@@ -50,13 +51,10 @@ def create_control_curve(
         parent_mobj = api_node.as_mobject(parent)
 
     runner = command.CommandRunner()
-    if controls_path:
-        parent_mobj, shape_mobjs = runner.run(
-            'tpDcc-libs-curves-dccs-maya-createCurveFromPath', curve_type=control_type, curves_path=controls_path,
-            curve_size=control_size, translate_offset=translate_offset, scale=scale, axis_order=axis_order,
-            mirror=mirror, parent=parent_mobj)
-    else:
-        parent_mobj, shape_mobjs = runner.run('tpDcc-libs-curves-dccs-maya-createCurveFromName')
+    parent_mobj, shape_mobjs = runner.run(
+        'tpDcc-libs-curves-dccs-maya-createCurveFromPath', curve_type=control_type, curves_path=controls_path,
+        curve_size=control_size, translate_offset=translate_offset, scale=scale, axis_order=axis_order,
+        mirror=mirror, parent=parent_mobj)
 
     if parent_mobj:
         for shape in shape_mobjs:
@@ -78,7 +76,7 @@ def create_control_curve(
 
     transforms = list()
     for curve_shape in curve_long_name_list:
-        parent = tp.Dcc.node_parent(curve_shape)
+        parent = dcc.node_parent(curve_shape)
         if parent:
             if parent not in transforms:
                 transforms.append(parent)
@@ -89,7 +87,7 @@ def create_control_curve(
     return transforms
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def create_text_control(text, font='Times New Roman'):
     """
     Creates a new text based control
@@ -127,7 +125,7 @@ def create_text_control(text, font='Times New Roman'):
 
 def replace_control_curves(
         control_name, control_type='circle', controls_path=None, auto_scale=True,
-        maintain_line_width=True, keep_color=True):
+        maintain_line_width=True, keep_color=True, **kwargs):
     """
     Replaces the given control with the given control type deleting the existing control curve shape nodes
     :param control_name:
@@ -139,11 +137,11 @@ def replace_control_curves(
     :return:
     """
 
-    orig_sel = tp.Dcc.selected_nodes()
+    orig_sel = dcc.selected_nodes()
 
     line_width = -1
     orig_size = None
-    orig_color = None
+    orig_color = kwargs.pop('color', None)
     if auto_scale:
         orig_size = get_control_size(control_name)
     if maintain_line_width:
@@ -152,11 +150,11 @@ def replace_control_curves(
         orig_color = get_control_color(control_name)
 
     new_control = create_control_curve(
-        control_name='new_ctrl', control_type=control_type, controls_path=controls_path, color=orig_color)[0]
+        control_name='new_ctrl', control_type=control_type, controls_path=controls_path, color=orig_color, **kwargs)[0]
     if auto_scale and orig_size is not None:
         new_scale = get_control_size(new_control)
         scale_factor = orig_size / new_scale
-        tp.Dcc.scale_shapes(new_control, scale_factor, relative=False)
+        dcc.scale_shapes(new_control, scale_factor, relative=False)
 
     maya.cmds.matchTransform([new_control, control_name], pos=True, rot=True, scl=False, piv=False)
 
@@ -166,12 +164,12 @@ def replace_control_curves(
     if maintain_line_width:
         curve.set_curve_line_thickness(control_name, line_width=line_width)
 
-    tp.Dcc.select_node(orig_sel)
+    dcc.select_node(orig_sel)
 
     return control_name
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def replace_controls_curves(control_names, control_type='circle', controls_path=None):
     """
 
@@ -199,11 +197,11 @@ def get_control_color(control_name):
     :return: variant
     """
 
-    shapes = tp.Dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
+    shapes = dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
     if not shapes:
         return (0.0, 0.0, 0.0)
 
-    return tp.Dcc.node_rgb_color(shapes[0], linear=True)
+    return dcc.node_rgb_color(shapes[0], linear=True)
 
 
 def set_control_color(control_name, new_color, linear=True):
@@ -215,7 +213,7 @@ def set_control_color(control_name, new_color, linear=True):
     :return: bool, True if the color is applied successfully; False otherwise
     """
 
-    shapes = tp.Dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
+    shapes = dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
     if not shapes:
         return False
 
@@ -247,10 +245,10 @@ def duplicate_control(
     duplicated_control = xform_utils.duplicate_transform_without_children(
         control_name, node_name=duplicate_name, delete_shapes=delete_node_shapes)
 
-    if tp.Dcc.node_parent(duplicated_control):
-        duplicated_control = tp.Dcc.set_parent_to_world(duplicated_control)
+    if dcc.node_parent(duplicated_control):
+        duplicated_control = dcc.set_parent_to_world(duplicated_control)
 
-    if tp.Dcc.node_type(duplicated_control) == 'joint':
+    if dcc.node_type(duplicated_control) == 'joint':
         pass
 
     return duplicated_control
@@ -275,46 +273,54 @@ def mirror_control(
     :return: str, mirrored control
     """
 
-    target_control_color = get_control_color(source_control) if not mirror_color and keep_color else mirror_color
+    if keep_color:
+        target_control_color = get_control_color(source_control)
+    else:
+        target_control_color = get_control_color(source_control) if not mirror_color and keep_color else mirror_color
 
-    source_shapes = tp.Dcc.list_shapes_of_type(source_control, 'nurbsCurve')
+    source_shapes = dcc.list_shapes_of_type(source_control, 'nurbsCurve')
     if not source_shapes:
         return None
 
     duplicated_control = duplicate_control(source_control)
-    mirror_pivot_grp = tp.Dcc.create_empty_group(name='temp_mirrorPivot')
-    duplicated_control = tp.Dcc.set_parent(duplicated_control, mirror_pivot_grp)
+    mirror_pivot_grp = dcc.create_empty_group(name='temp_mirrorPivot')
+    duplicated_control = dcc.set_parent(duplicated_control, mirror_pivot_grp)
 
-    tp.Dcc.set_attribute_value(mirror_pivot_grp, 'scale{}'.format(mirror_axis.upper()), -1)
+    dcc.set_attribute_value(mirror_pivot_grp, 'scale{}'.format(mirror_axis.upper()), -1)
 
     target_control = target_control or source_control.replace(from_name, to_name)
 
     # We force this conversion. This is something that we should remove in the future
-    if target_control and not tp.Dcc.object_exists(target_control):
+    if target_control and not dcc.node_exists(target_control):
         target_control = target_control.replace('Left', 'Right')
 
-    if target_control and tp.Dcc.object_exists(target_control) and mirror_replace:
+    if target_control and not dcc.node_exists(target_control):
+        target_control = dcc.node_short_name(target_control)
+
+    if target_control and dcc.node_exists(target_control) and mirror_replace:
+        if keep_color:
+            target_control_color = get_control_color(target_control)
         mirrored_control = xform_utils.parent_transforms_shapes(
             target_control, duplicated_control, delete_original=True)
     else:
-        mirrored_control = tp.Dcc.set_parent_to_world(duplicated_control)
+        mirrored_control = dcc.set_parent_to_world(duplicated_control)
 
     maya.cmds.delete(mirror_pivot_grp)
 
     if mirror_mode == 0:
-        tp.Dcc.move_node(mirrored_control, 0, 0, 0, world_space=True)
+        dcc.move_node(mirrored_control, 0, 0, 0, world_space=True)
     elif mirror_mode == 1:
-        orig_pos = tp.Dcc.node_world_space_pivot(source_control)
-        tp.Dcc.move_node(mirrored_control, orig_pos[0], orig_pos[1], orig_pos[2], world_space=True)
+        orig_pos = dcc.node_world_space_pivot(source_control)
+        dcc.move_node(mirrored_control, orig_pos[0], orig_pos[1], orig_pos[2], world_space=True)
 
     if target_control_color:
-        target_shapes = tp.Dcc.list_shapes_of_type(mirrored_control, shape_type='nurbsCurve')
+        target_shapes = dcc.list_shapes_of_type(mirrored_control, shape_type='nurbsCurve')
         for target_shape in target_shapes:
-            tp.Dcc.set_node_color(target_shape, target_control_color)
+            dcc.set_node_color(target_shape, target_control_color)
 
     if from_name and to_name and from_name != to_name:
         if from_name in mirrored_control:
-            mirrored_control = tp.Dcc.rename_node(mirrored_control, source_control.replace(from_name, to_name))
+            mirrored_control = dcc.rename_node(mirrored_control, source_control.replace(from_name, to_name))
 
     return mirrored_control
 
@@ -339,7 +345,7 @@ def add_control_tracker_attributes(
     xform_utils.add_transform_tracker_attributes(control_name, translate=translate, rotate=rotate, scale=scale)
 
     if not color:
-        shapes = tp.Dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
+        shapes = dcc.list_shapes_of_type(control_name, shape_type='nurbsCurve')
         if shapes:
             color = node_utils.get_rgb_color(shapes[0], linear=True)
     if not color:
@@ -347,11 +353,11 @@ def add_control_tracker_attributes(
     color_utils.add_color_tracker_attributes(control_name, color)
 
     for i, attr_name in enumerate(consts.ALL_CONTROL_TYPE_TRACKER_ATTRIBUTE_NAMES):
-        if not tp.Dcc.attribute_exists(control_name, attr_name):
-            tp.Dcc.add_string_attribute(control_name, attr_name)
+        if not dcc.attribute_exists(control_name, attr_name):
+            dcc.add_string_attribute(control_name, attr_name)
 
-    tp.Dcc.set_attribute_value(control_name, consts.TRACKER_CONTROL_TYPE_ATTR_NAME, control_type)
-    tp.Dcc.set_attribute_value(control_name, consts.TRACKER_CONTROL_TYPE_DEFAULT_ATTR_NAME, control_type)
+    dcc.set_attribute_value(control_name, consts.TRACKER_CONTROL_TYPE_ATTR_NAME, control_type)
+    dcc.set_attribute_value(control_name, consts.TRACKER_CONTROL_TYPE_DEFAULT_ATTR_NAME, control_type)
 
 
 # ============================================================================================================
@@ -365,7 +371,7 @@ def get_control_size(control_name):
     :return: float
     """
 
-    return tp.Dcc.node_bounding_box_size(control_name)
+    return dcc.node_bounding_box_size(control_name)
 
 
 # ============================================================================================================
@@ -409,8 +415,8 @@ def is_control(transform_node, only_tagged=False, **kwargs):
     transform = name_utils.remove_namespace_from_string(transform_node)
 
     if only_tagged:
-        if tp.Dcc.attribute_exists(transform, 'tag'):
-            value = tp.Dcc.get_attribute_value(transform, 'tag')
+        if dcc.attribute_exists(transform, 'tag'):
+            value = dcc.get_attribute_value(transform, 'tag')
             if value:
                 return True
         return False
@@ -427,24 +433,24 @@ def is_control(transform_node, only_tagged=False, **kwargs):
 
         # Check attributes
         for attr_to_skip in attributes_to_skip:
-            if tp.Dcc.attribute_exists(transform, attr_to_skip):
+            if dcc.attribute_exists(transform, attr_to_skip):
                 return False
         for attr_to_check in attributes_to_check:
-            if tp.Dcc.attribute_exists(transform, attr_to_check):
+            if dcc.attribute_exists(transform, attr_to_check):
                 return True
-        if tp.Dcc.attribute_exists(transform, 'tag'):
-            value = tp.Dcc.get_attribute_value(transform, 'tag')
+        if dcc.attribute_exists(transform, 'tag'):
+            value = dcc.get_attribute_value(transform, 'tag')
             if value:
                 maybe_control = True
-        if tp.Dcc.attribute_exists(transform, 'curveType'):
+        if dcc.attribute_exists(transform, 'curveType'):
             if maybe_control:
-                if not tp.Dcc.node_has_shape_of_type(transform, 'nurbsCurve'):
+                if not dcc.node_has_shape_of_type(transform, 'nurbsCurve'):
                     return False
                 return True
 
         if maybe_control:
-            if tp.Dcc.node_has_shape_of_type(
-                    transform, 'nurbsCurve') or tp.Dcc.node_has_shape_of_type(transform, 'nurbsSurface'):
+            if dcc.node_has_shape_of_type(
+                    transform, 'nurbsCurve') or dcc.node_has_shape_of_type(transform, 'nurbsSurface'):
                 return True
 
     return False
@@ -464,8 +470,8 @@ def get_controls(**kwargs):
     namespace = kwargs.get('namespace', '')
     name = '{}:*'.format(namespace) if namespace else '*'
 
-    transforms = tp.Dcc.list_nodes(name, node_type='transform', full_path=False)
-    joints = tp.Dcc.list_nodes(name, node_type='joint', full_path=False)
+    transforms = dcc.list_nodes(name, node_type='transform', full_path=False)
+    joints = dcc.list_nodes(name, node_type='joint', full_path=False)
     if joints:
         transforms += joints
 
@@ -481,7 +487,7 @@ def get_controls(**kwargs):
     return found_with_value if found_with_value else found
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def select_controls(**kwargs):
     """
     Select all controls in current scene
@@ -492,10 +498,10 @@ def select_controls(**kwargs):
     if not all_controls:
         return
 
-    tp.Dcc.select_node(all_controls)
+    dcc.select_node(all_controls)
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def key_controls(**kwargs):
     """
     Sets a keyframe in all controls in current scene
@@ -507,10 +513,10 @@ def key_controls(**kwargs):
     if not all_controls:
         return
 
-    tp.Dcc.set_keyframe(all_controls, shape=0, controlPoints=0, hierarchy='none', breakdown=0)
+    dcc.set_keyframe(all_controls, shape=0, controlPoints=0, hierarchy='none', breakdown=0)
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def scale_controls(value, controls=None, **kwargs):
     """
     Scale current selected controls by given value
@@ -519,7 +525,7 @@ def scale_controls(value, controls=None, **kwargs):
     namespace = kwargs.get('namespace', '')
     all_controls = controls or get_controls(namespace=namespace, **kwargs) or list()
     for control in all_controls:
-        tp.Dcc.scale_transform_shapes(control, value)
+        dcc.scale_transform_shapes(control, value)
 
 
 def get_control_transform_rgb_color(control_transform, linear=True):
@@ -552,33 +558,33 @@ def set_shape(crv, crv_shape_list, size=None, select_new_shape=False, keep_color
     orig_size = None
     orig_color = None
     if crv_shapes:
-        orig_size = tp.Dcc.node_bounding_box_size(crv)
+        orig_size = dcc.node_bounding_box_size(crv)
 
         # If there are multiple shapes, we only take into account the color of the first shape
-        orig_color = tp.Dcc.node_color(crv_shapes[0])
+        orig_color = dcc.node_color(crv_shapes[0])
 
     if crv_shapes:
-        tp.Dcc.delete_object(crv_shapes)
+        dcc.delete_node(crv_shapes)
 
     for i, c in enumerate(crv_shape_list):
-        new_shape = tp.Dcc.list_shapes(c)[0]
-        new_shape = tp.Dcc.rename_node(new_shape, tp.Dcc.node_short_name(crv) + 'Shape' + str(i + 1).zfill(2))
-        tp.Dcc.enable_overrides(new_shape)
+        new_shape = dcc.list_shapes(c)[0]
+        new_shape = dcc.rename_node(new_shape, dcc.node_short_name(crv) + 'Shape' + str(i + 1).zfill(2))
+        dcc.enable_overrides(new_shape)
         if orig_color is not None and keep_color:
-            tp.Dcc.set_node_color(new_shape, orig_color)
-        tp.Dcc.combine_shapes(crv, new_shape, delete_after_combine=True)
+            dcc.set_node_color(new_shape, orig_color)
+        dcc.combine_shapes(crv, new_shape, delete_after_combine=True)
 
-    new_size = tp.Dcc.node_bounding_box_size(crv)
+    new_size = dcc.node_bounding_box_size(crv)
 
     if orig_size and new_size:
         scale_size = orig_size / new_size
-        tp.Dcc.scale_shapes(crv, scale_size, relative=False)
+        dcc.scale_shapes(crv, scale_size, relative=False)
 
     if size:
-        tp.Dcc.scale_shapes(crv, size, relative=True)
+        dcc.scale_shapes(crv, size, relative=True)
 
     if select_new_shape:
-        tp.Dcc.select_node(crv)
+        dcc.select_node(crv)
 
     return crv
 
@@ -595,15 +601,15 @@ def create_buffer_groups(target=None, depth=1):
 
     target = python.force_list(target)
     for tgt in target:
-        rotate_order = tp.Dcc.get_attribute_value(tgt, 'rotateOrder')
+        rotate_order = dcc.get_attribute_value(tgt, 'rotateOrder')
         for i in range(depth):
             obj_parent = maya.cmds.listRelatives(tgt, parent=True, fullPath=True)
             empty_group_name = 'buffer' if i == 0 else 'buffer{}'.format(i)
             empty_group = maya.cmds.group(empty=True, n=empty_group_name, world=True)
-            tp.Dcc.set_attribute_value(empty_group, 'rotateOrder', rotate_order)
+            dcc.set_attribute_value(empty_group, 'rotateOrder', rotate_order)
             if obj_parent:
                 maya.cmds.parent(empty_group, obj_parent)
-            obj_transform = [tp.Dcc.get_attribute_value(tgt, xform) for xform in 'trs']
+            obj_transform = [dcc.get_attribute_value(tgt, xform) for xform in 'trs']
             maya.cmds.parent(tgt, empty_group)
             for j, xform in enumerate('tsr'):
                 maya.cmds.setAttr('{}.{}'.format(empty_group, xform), *obj_transform[j], type='double3')

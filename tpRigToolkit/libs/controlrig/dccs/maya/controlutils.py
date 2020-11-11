@@ -7,8 +7,7 @@ Module that contains utility functions related with tpRigToolkit.tools.controlri
 
 from __future__ import print_function, division, absolute_import
 
-import tpDcc as tp
-import tpDcc.dccs.maya as maya
+import maya.cmds
 
 
 def getpos(node, x=False, v=True):

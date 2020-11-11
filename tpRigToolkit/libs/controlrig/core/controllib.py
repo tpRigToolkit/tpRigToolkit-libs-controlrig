@@ -8,15 +8,17 @@ Module that contains functions related with ControlLib
 from __future__ import print_function, division, absolute_import
 
 import os
+import logging
 
-import tpDcc as tp
+from tpDcc import dcc
 from tpDcc.core import library, reroute
+from tpDcc.libs.curves.core import curveslib
 
 LIB_ID = 'tpRigToolkit-libs-controlrig'
 LIB_ENV = LIB_ID.replace('-', '_').upper()
 CONTROL_EXT = '.control'
 
-LOGGER = tp.LogsMgr().get_logger('tpRigToolkit-libs-controlrig')
+LOGGER = logging.getLogger('tpRigToolkit-libs-controlrig')
 
 
 class ControLlib(library.DccLibrary, object):
@@ -42,6 +44,19 @@ class ControLlib(library.DccLibrary, object):
 # ============================================================================================================
 # CREATE
 # ============================================================================================================
+
+def control_exists(control_name, controls_path=None):
+    """
+    Returns whether or not given control rig exists in controls library
+    :param control_name: str
+    :param controls_path: str
+    :return: bool
+    """
+
+    curve_found = curveslib.find_curve_path_by_name(control_name, curves_path=controls_path)
+
+    return bool(curve_found)
+
 
 @reroute.reroute_factory(LIB_ID, 'controllib')
 def create_control_curve(control_name='new_ctrl', control_type='circle', controls_path=None):
@@ -72,7 +87,7 @@ def create_text_control(text, font='Times New Roman'):
 # ============================================================================================================
 
 @reroute.reroute_factory(LIB_ID, 'controllib')
-def replace_control_curves(control_names, control_type='circle', controls_path=None, keep_color=True):
+def replace_control_curves(control_names, control_type='circle', controls_path=None, keep_color=True, **kwargs):
     """
 
     :param control_names:
@@ -180,7 +195,7 @@ def mirror_control(source_control, target_control=None, mirror_axis='X', mirror_
     raise NotImplementedError('Function select_controls not implemented for current DCC!')
 
 
-@tp.Dcc.undo_decorator()
+@dcc.undo_decorator()
 def mirror_controls(nodes=None, **kwargs):
     """
     Mirrors the CV positions of all controls in the current scene
@@ -201,7 +216,7 @@ def mirror_controls(nodes=None, **kwargs):
         mirrored_controls.append(mirrored_control)
 
     if mirrored_controls:
-        tp.Dcc.select_node(mirrored_controls)
+        dcc.select_node(mirrored_controls)
 
     return mirrored_controls
 

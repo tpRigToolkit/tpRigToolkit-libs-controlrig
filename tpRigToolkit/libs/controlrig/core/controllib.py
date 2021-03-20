@@ -59,7 +59,7 @@ def control_exists(control_name, controls_path=None):
 
 
 @reroute.reroute_factory(LIB_ID, 'controllib')
-def create_control_curve(control_name='new_ctrl', control_type='circle', controls_path=None):
+def create_control_curve(control_name='new_ctrl', control_type='circle', controls_path=None, **kwargs):
     """
     Creates a new curve based control
     :param control_name: str

@@ -12,7 +12,7 @@ import maya.cmds
 from tpDcc import dcc
 from tpDcc.core import command
 from tpDcc.libs.python import python
- 
+
 from tpDcc.dccs.maya.api import node as api_node
 from tpDcc.dccs.maya.core import filtertypes, curve, name as name_utils, shape as shape_utils, node as node_utils
 from tpDcc.dccs.maya.core import transform as xform_utils, color as color_utils
@@ -28,7 +28,8 @@ from tpRigToolkit.libs.controlrig.dccs.maya import controlutils
 def create_control_curve(
         control_name='new_ctrl', control_type='circle', controls_path=None, control_size=1.0,
         translate_offset=(0.0, 0.0, 0.0), rotate_offset=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0), axis_order='XYZ',
-        mirror=None, color=None, line_width=-1, parent=None):
+        mirror=None, color=None, line_width=-1,  create_buffers=False, buffers_depth=0,
+        match_translate=False, match_rotate=False, match_scale=False, parent=None, **kwargs):
     """
     Creates a new curve based control
     :param control_name: str, name of the new control to create
@@ -42,19 +43,36 @@ def create_control_curve(
     :param mirror: str or None, axis mirror to apply to the control curves (None, 'X', 'Y' or 'Z')
     :param color: list(float, float, float), RGB or index color to apply to the control
     :param line_width: str, If given, the new shapes will be parented to given node
+    :param create_buffers: bool, Whether or not control buffer groups should be created.
+    :param buffers_depth: int, Number of buffers groups to create.
     :param parent: str, If given, the new shapes will be parented to given node
+    :param match_translate: bool, Whether or not new control root node should match the translate with the
+        translation of the current DCC selected node
+    :param match_translate: bool, Whether or not new control root node should match the rotate with the
+        rotation of the current DCC selected node
+    :param match_scale: bool, Whether or not new control root node should match the scale with the
+        scale of the current DCC selected node
     :return:
     """
+
+    current_selection = dcc.selected_nodes()
 
     parent_mobj = None
     if parent:
         parent_mobj = api_node.as_mobject(parent)
 
     runner = command.CommandRunner()
-    parent_mobj, shape_mobjs = runner.run(
-        'tpDcc-libs-curves-dccs-maya-createCurveFromPath', curve_type=control_type, curves_path=controls_path,
-        curve_size=control_size, translate_offset=translate_offset, scale=scale, axis_order=axis_order,
-        mirror=mirror, parent=parent_mobj)
+
+    control_data = kwargs.pop('control_data', None)
+    if control_data:
+        parent_mobj, shape_mobjs = runner.run(
+            'tpDcc-libs-curves-dccs-maya-createCurveFromData', curve_data=control_data, curve_size=control_size,
+            translate_offset=translate_offset, scale=scale, axis_order=axis_order, mirror=mirror, parent=parent_mobj)
+    else:
+        parent_mobj, shape_mobjs = runner.run(
+            'tpDcc-libs-curves-dccs-maya-createCurveFromPath', curve_type=control_type, curves_path=controls_path,
+            curve_size=control_size, translate_offset=translate_offset, scale=scale, axis_order=axis_order,
+            mirror=mirror, parent=parent_mobj)
 
     if parent_mobj:
         for shape in shape_mobjs:
@@ -72,7 +90,10 @@ def create_control_curve(
 
     # TODO: Support index based color
     if color is not None:
-        node_utils.set_rgb_color(curve_long_name_list, color, linear=True, color_shapes=True)
+        if isinstance(color, int):
+            node_utils.set_color(curve_long_name_list, color)
+        else:
+            node_utils.set_rgb_color(curve_long_name_list, color, linear=True, color_shapes=True)
 
     transforms = list()
     for curve_shape in curve_long_name_list:
@@ -83,6 +104,20 @@ def create_control_curve(
         else:
             if curve_shape not in transforms:
                 transforms.append(curve_shape)
+
+    if not parent and transforms:
+        if create_buffers and buffers_depth > 0:
+            transforms = create_buffer_groups(transforms, buffers_depth)
+        if current_selection:
+            match_transform = current_selection[0]
+            if match_transform and dcc.node_exists(match_transform):
+                for transform in transforms:
+                    if match_translate:
+                        dcc.match_translation(match_transform, transform)
+                    if match_rotate:
+                        dcc.match_rotation(match_transform, transform)
+                    if match_scale:
+                        dcc.match_scale(match_transform, transform)
 
     return transforms
 
@@ -156,34 +191,32 @@ def replace_control_curves(
         scale_factor = orig_size / new_scale
         dcc.scale_shapes(new_control, scale_factor, relative=False)
 
-    maya.cmds.matchTransform([new_control, control_name], pos=True, rot=True, scl=False, piv=False)
+    # We need to make sure that transforms are reset in all scenarios
+    # Previous implementation was failing if the target hierarchy had a mirror behaviour (group scaled negative in
+    # one of the axises)
+    # maya.cmds.matchTransform([new_control, target], pos=True, rot=True, scl=True, piv=True)
+    target = dcc.list_nodes(control_name, node_type='transform')[0]
+    dcc.delete_node(dcc.create_parent_constraint(new_control, target, maintain_offset=False))
+    dcc.delete_node(dcc.create_scale_constraint(new_control, target, maintain_offset=False))
+    target_parent = dcc.node_parent(target)
+    if target_parent:
+        new_control = dcc.set_parent(new_control, target_parent)
+        for axis in 'XYZ':
+            dcc.set_attribute_value(new_control, 'translate{}'.format(axis), 0.0)
+            dcc.set_attribute_value(new_control, 'rotate{}'.format(axis), 0.0)
+            dcc.set_attribute_value(new_control, 'scale{}'.format(axis), 1.0)
+        new_control = dcc.set_parent_to_world(new_control)
 
-    xform_utils.parent_transforms_shapes(
-        control_name, [new_control], delete_original=True, delete_shape_type='nurbsCurve')
+    if target != new_control:
+        xform_utils.parent_transforms_shapes(
+            target, [new_control], delete_original=True, delete_shape_type='nurbsCurve')
 
     if maintain_line_width:
-        curve.set_curve_line_thickness(control_name, line_width=line_width)
+        curve.set_curve_line_thickness(target, line_width=line_width)
 
     dcc.select_node(orig_sel)
 
-    return control_name
-
-
-@dcc.undo_decorator()
-def replace_controls_curves(control_names, control_type='circle', controls_path=None):
-    """
-
-    :param control_names:
-    :param control_type:
-    :param controls_path:
-    :return:
-    """
-
-    skip_reconnect = False
-    broken_off_control, replace_group, network_node = break_track_controls(
-        control_names, apply_temp_color=False, create_network=False)
-    if not broken_off_control:
-        broken_off_control = None
+    return target
 
 
 # ============================================================================================================
@@ -442,11 +475,14 @@ def is_control(transform_node, only_tagged=False, **kwargs):
             value = dcc.get_attribute_value(transform, 'tag')
             if value:
                 maybe_control = True
-        if dcc.attribute_exists(transform, 'curveType'):
-            if maybe_control:
-                if not dcc.node_has_shape_of_type(transform, 'nurbsCurve'):
-                    return False
-                return True
+        if dcc.attribute_exists(transform, 'curveType') or dcc.attribute_exists(transform, 'type'):
+            value = dcc.get_attribute_value(transform, 'curveType')
+            if value:
+                maybe_control = True
+        if dcc.attribute_exists(transform, 'type'):
+            value = dcc.get_attribute_value(transform, 'type')
+            if value:
+                maybe_control = True
 
         if maybe_control:
             if dcc.node_has_shape_of_type(
@@ -609,11 +645,11 @@ def create_buffer_groups(target=None, depth=1):
             dcc.set_attribute_value(empty_group, 'rotateOrder', rotate_order)
             if obj_parent:
                 maya.cmds.parent(empty_group, obj_parent)
-            obj_transform = [dcc.get_attribute_value(tgt, xform) for xform in 'trs']
-            maya.cmds.parent(tgt, empty_group)
+            obj_transform = [dcc.get_attribute_value(tgt, xform) for xform in 'tsr']
+            tgt = maya.cmds.parent(tgt, empty_group)[0]
             for j, xform in enumerate('tsr'):
                 maya.cmds.setAttr('{}.{}'.format(empty_group, xform), *obj_transform[j], type='double3')
-                reset_xform = (0, 0, 0) if i != 1 else (1, 1, 1)
+                reset_xform = (0, 0, 0) if j != 1 else (1, 1, 1)
                 maya.cmds.setAttr('{}.{}'.format(tgt, xform), *reset_xform, type='double3')
             result.append(empty_group)
 

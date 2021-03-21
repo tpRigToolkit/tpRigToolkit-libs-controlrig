@@ -13,7 +13,7 @@ from tpDcc.libs.curves.core import curveslib
 def create_control_curve(
         control_name='new_ctrl', control_type='circle', controls_path=None, control_size=1.0,
         translate_offset=(0.0, 0.0, 0.0), rotate_offset=(0.0, 0.0, 0.0), scale=(1.0, 1.0, 1.0), axis_order='XYZ',
-        mirror=None, color=None, line_width=-1,  create_buffers=False, buffers_depth=0,
+        mirror=None, color=None, line_width=-1, create_buffers=False, buffers_depth=0,
         match_translate=False, match_rotate=False, match_scale=False, parent=None):
     """
     Creates a new curve based control

@@ -1,0 +1,7 @@
+tpRigToolkit.libs.controlrig.dccs.max.controllib module
+=======================================================
+
+.. automodule:: tpRigToolkit.libs.controlrig.dccs.max.controllib
+   :members:
+   :undoc-members:
+   :show-inheritance:

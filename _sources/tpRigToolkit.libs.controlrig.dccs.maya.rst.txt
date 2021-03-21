@@ -7,7 +7,6 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   tpRigToolkit.libs.controlrig.dccs.maya.commands
    tpRigToolkit.libs.controlrig.dccs.maya.controllib
    tpRigToolkit.libs.controlrig.dccs.maya.controlutils
 
